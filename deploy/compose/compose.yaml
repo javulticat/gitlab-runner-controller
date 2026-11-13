@@ -1,0 +1,28 @@
+services:
+  controller:
+    image: ghcr.io/javulticat/gitlab-runner-controller:v0.1.0
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      PORT: "3000"
+      STORAGE_DIR: /data
+      HOST_A_COMMAND_JSON: '["/opt/runner-host-adapter"]'
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - controller-data:/data
+      - ../../controller.json:/etc/gitlab-runner-controller/controller.json:ro
+      - ${RUNNER_ADAPTER_PATH:?set the absolute adapter executable path}:/opt/runner-host-adapter:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  controller-data:

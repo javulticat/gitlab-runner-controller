@@ -1,0 +1,52 @@
+{
+  "controller_id": "gitlab-runner-controller",
+  "gitlab_url": "https://gitlab.com",
+  "project_ids": [123],
+  "poll_interval": "15s",
+  "jobs_poll_interval": "60s",
+  "min_refresh_interval": "5s",
+  "idle_grace": "45s",
+  "observation_grace": "90s",
+  "readiness_timeout": "5m",
+  "providers": {
+    "primary": {
+      "identity": "account-example",
+      "lifecycle": "retained",
+      "command_env": "HOST_A_COMMAND_JSON",
+      "environment": {
+        "API_ENDPOINT": "HOST_A_ENDPOINT",
+        "API_TOKEN": "HOST_A_TOKEN",
+        "ACCOUNT_ID": "HOST_A_ACCOUNT_ID",
+        "LIFECYCLE": "HOST_A_LIFECYCLE"
+      },
+      "max_running": 5,
+      "revision": "deployment-v1"
+    }
+  },
+  "pools": [
+    {
+      "name": "linux",
+      "provider": "primary",
+      "tags": ["linux"],
+      "max_instances": 4,
+      "jobs_per_instance": 1,
+      "priority": 0,
+      "runner_id": 1001,
+      "runner_token_env": "GITLAB_RUNNER_LINUX_TOKEN",
+      "options": {}
+    },
+    {
+      "name": "protected",
+      "provider": "primary",
+      "tags": ["protected"],
+      "max_instances": 1,
+      "jobs_per_instance": 1,
+      "priority": 100,
+      "runner_id": 1002,
+      "protected_pending_policy": "probe_once",
+      "runner_token_env": "GITLAB_RUNNER_PROTECTED_TOKEN",
+      "options": {}
+    }
+  ],
+  "runner": {}
+}

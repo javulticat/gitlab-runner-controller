@@ -1,0 +1,12 @@
+**
+!go.mod
+!go.sum
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!pkg/
+!pkg/**
+!controller.example.json
+!LICENSE
+**/*_test.go
