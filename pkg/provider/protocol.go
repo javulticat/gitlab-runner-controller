@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -27,10 +28,11 @@ type Request struct {
 }
 
 type WireError struct {
-	Kind         ErrorKind `json:"kind"`
-	RetryAfterMS int64     `json:"retry_after_ms,omitempty"`
-	NoSideEffect bool      `json:"no_side_effect,omitempty"`
-	Stage        string    `json:"stage"`
+	Kind         ErrorKind   `json:"kind"`
+	RetryAfterMS int64       `json:"retry_after_ms,omitempty"`
+	NoSideEffect bool        `json:"no_side_effect,omitempty"`
+	Stage        string      `json:"stage"`
+	Diagnostic   *Diagnostic `json:"diagnostic,omitempty"`
 }
 
 type Response struct {
@@ -65,7 +67,7 @@ func (d Description) Valid() bool {
 	return d.Identity != "" && d.Scope != "" && d.Revision != "" && len(d.Identity) <= 256 && len(d.Scope) <= 256 && len(d.Revision) <= 256 && !strings.ContainsAny(d.Identity+d.Scope+d.Revision, "\r\n\x00") && (d.Lifecycle == Retained || (d.Lifecycle == Disposable && d.AbsenceConfirmsDestroy))
 }
 
-// Serve runs one operation. Errors carry categories only, never provider output.
+// Serve runs one operation. Errors carry safe metadata, never provider output.
 func Serve(ctx context.Context, input io.Reader, output io.Writer, factory func() (Provider, error)) error {
 	data, err := io.ReadAll(io.LimitReader(input, MaxMessageBytes+1))
 	if err != nil {
@@ -110,6 +112,12 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, factory func(
 			wire.Kind = remote.Kind
 			wire.RetryAfterMS = min(24*time.Hour, max(0, remote.RetryAfter)).Milliseconds()
 			wire.NoSideEffect = remote.NoSideEffect
+			token := ""
+			if request.Runner != nil {
+				token = request.Runner.Token
+			}
+			// Omission preserves failure semantics when diagnostic metadata is unsafe.
+			wire.Diagnostic = SanitizeDiagnostic(remote.Diagnostic, os.Environ(), token)
 		}
 		if !dispatched {
 			wire.Stage = "preflight"

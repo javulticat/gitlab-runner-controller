@@ -170,7 +170,12 @@ func (c *Controller) slotUpdate(poolName string, index int, change func(*state.S
 
 func (c *Controller) resumeRetained(ctx context.Context, pool config.Pool, index int, id string) error {
 	return c.mutate(ctx, pool.Provider, func(ctx context.Context) error {
-		stamp := func(slot *state.Slot) { slot.ChangedAt = c.now() }
+		stamp := func(slot *state.Slot) {
+			slot.ChangedAt = c.now()
+			if slot.BootstrapDeadline.IsZero() {
+				c.startBootstrap(slot, slot.ChangedAt)
+			}
+		}
 		// Preserve the reservation across crashes and uncertain resume replies.
 		if err := c.slotUpdate(pool.Name, index, stamp); err != nil {
 			return err
@@ -178,6 +183,11 @@ func (c *Controller) resumeRetained(ctx context.Context, pool config.Pool, index
 		callErr := c.providers[pool.Provider].Resume(ctx, id)
 		return errors.Join(callErr, c.slotUpdate(pool.Name, index, stamp))
 	})
+}
+
+func (c *Controller) startBootstrap(slot *state.Slot, now time.Time) {
+	slot.BootstrapStartedAt = now
+	slot.BootstrapDeadline = now.Add(time.Duration(c.cfg.ReadinessTimeout))
 }
 
 func bootstrapExpired(slot state.Slot, now time.Time) bool {
@@ -199,6 +209,9 @@ func (c *Controller) deferBootstrap(slot *state.Slot, now time.Time) {
 }
 
 func (c *Controller) failure(pool string, index int, err error, uncertain bool) error {
+	if err == errUnverifiedDispatch {
+		return state.ErrStale
+	}
 	if errors.Is(err, ErrStopping) {
 		return err
 	}
@@ -244,10 +257,6 @@ func (c *Controller) begin(pool string, index int, kind string, probeKeys ...str
 			slot.BootstrapStartedAt, slot.BootstrapDeadline = time.Time{}, time.Time{}
 		}
 		if kind == "create" || kind == "resume" {
-			if kind == "create" || slot.BootstrapDeadline.IsZero() {
-				slot.BootstrapStartedAt = c.now()
-				slot.BootstrapDeadline = c.now().Add(time.Duration(c.cfg.ReadinessTimeout))
-			}
 			c.claimProbe(saved, c.poolByName(pool), index)
 			if kind == "create" && len(probeKeys) > 0 && probeKeys[0] != "" {
 				key := probeKeys[0]
@@ -358,8 +367,7 @@ func (c *Controller) schedule(ctx context.Context, inventory map[string]map[stri
 				}
 				if err := c.slotUpdate(pool.Name, index, func(slot *state.Slot) {
 					slot.Ready = false
-					slot.BootstrapStartedAt = c.now()
-					slot.BootstrapDeadline = c.now().Add(time.Duration(c.cfg.ReadinessTimeout))
+					c.startBootstrap(slot, c.now())
 				}); err != nil {
 					return err
 				}
@@ -516,6 +524,9 @@ func (c *Controller) activate(ctx context.Context, pool config.Pool, index int, 
 	slot := c.store.Snapshot().Pools[pool.Name].Slots[index]
 	var resource provider.Resource
 	err := c.mutate(ctx, pool.Provider, func(ctx context.Context) error {
+		if err := c.slotUpdate(pool.Name, index, func(slot *state.Slot) { c.startBootstrap(slot, c.now()) }); err != nil {
+			return err
+		}
 		var callErr error
 		resource, callErr = c.providers[pool.Provider].Create(ctx, provider.CreateRequest{OperationID: slot.Operation.ID, Options: pool.Options, Runner: c.spec(pool, index)})
 		return callErr

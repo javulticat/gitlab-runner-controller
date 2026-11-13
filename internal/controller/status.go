@@ -19,7 +19,7 @@ func (c *Controller) Status() Status {
 	c.statusMu.RLock()
 	result := Status{LastStep: c.lastStep, LastError: c.lastError, State: saved}
 	c.statusMu.RUnlock()
-	result.Ready = !c.stopping.Load() && c.store.Healthy() && c.verified(saved) && result.LastError == "" && !result.LastStep.IsZero() &&
+	result.Ready = !c.stopping.Load() && c.store.Healthy() && !saved.LastSync.IsZero() && !c.now().Before(saved.BackoffUntil) && result.LastError == "" && !result.LastStep.IsZero() &&
 		c.now().Sub(saved.LastSync) <= time.Duration(c.cfg.JobsPollInterval)*2 && c.now().Sub(result.LastStep) < 6*time.Minute
 	for _, pool := range saved.Pools {
 		if pool.RunnerError != "" {

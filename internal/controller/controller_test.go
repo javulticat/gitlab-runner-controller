@@ -409,8 +409,8 @@ func TestWebhookCannotOverwriteVerifiedJobOrRaceLifecycle(t *testing.T) {
 	}
 	f.now = f.now.Add(time.Minute)
 	err := f.c.Step(context.Background())
-	if !errors.Is(err, state.ErrStale) {
-		t.Fatalf("expected stale synchronization, got %v", err)
+	if err != nil {
+		t.Fatalf("racing synchronization should defer reconciliation: %v", err)
 	}
 	if f.host.stops != 0 || f.store.Snapshot().Jobs["1/1"].Status != "running" {
 		t.Fatal("racing webhook allowed an unsafe lifecycle decision")
@@ -453,7 +453,7 @@ func TestRefreshSpacingAndDuplicateHints(t *testing.T) {
 	if f.store.Snapshot().HintRevision != revision {
 		t.Fatal("duplicate hook changed hint revision")
 	}
-	if err := f.c.Step(context.Background()); err == nil || f.api.calls != 1 {
+	if err := f.c.Step(context.Background()); err != nil || f.api.calls != 1 {
 		t.Fatal("minimum refresh spacing was bypassed")
 	}
 	f.api.jobs = []state.Job{job(1, "pending", "linux")}

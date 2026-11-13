@@ -15,6 +15,7 @@ func TestVersionFromBuild(t *testing.T) {
 	}{
 		{name: "installed release", module: "v0.1.0", want: "v0.1.0"},
 		{name: "clean release checkout", module: "v0.1.0", want: "v0.1.0"},
+		{name: "patch release", module: "v0.1.1", want: "v0.1.1"},
 		{name: "dirty release checkout", module: "v0.1.0+dirty", modified: true, want: "dev"},
 		{name: "modified VCS setting", module: "v0.1.0", modified: true, want: "dev"},
 		{name: "untagged checkout", module: "v0.0.0-20261112000000-0123456789ab", want: "dev"},

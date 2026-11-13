@@ -4,7 +4,7 @@
 
 | Version | Security support |
 | --- | --- |
-| v0.1.0 | Supported |
+| v0.1.x | Latest patch supported |
 
 ## Reporting a vulnerability
 

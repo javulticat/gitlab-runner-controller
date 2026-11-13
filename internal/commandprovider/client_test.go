@@ -651,7 +651,7 @@ func runFixtureProcess() error {
 			fields += fmt.Sprintf(`,"ok":%t`, mode != "confirmation-false")
 		}
 	}
-	if mode == "rejection" || mode == "error-kind" || mode == "retry-negative" || mode == "retry-excessive" || mode == "nonzero-rejection" || mode == "conflicting-result" || strings.HasPrefix(mode, "error-stage-") || strings.HasPrefix(mode, "preflight-") || mode == "operation-without-description" {
+	if mode == "rejection" || mode == "error-kind" || mode == "retry-negative" || mode == "retry-excessive" || mode == "nonzero-rejection" || mode == "conflicting-result" || strings.HasPrefix(mode, "error-stage-") || strings.HasPrefix(mode, "preflight-") || mode == "operation-without-description" || strings.HasPrefix(mode, "diagnostic-") {
 		kind, retry, noSideEffect := os.Getenv("GRC_HELPER_KIND"), int64(1250), os.Getenv("GRC_HELPER_NO_SIDE_EFFECT") == "true"
 		stage := "operation"
 		if kind == "" {
@@ -686,7 +686,11 @@ func runFixtureProcess() error {
 		} else {
 			noSideEffect = true
 		}
-		fields += fmt.Sprintf(`,"error":{"kind":%q,"retry_after_ms":%d,"no_side_effect":%t,"stage":%q}`, kind, retry, noSideEffect, stage)
+		diagnostic := ""
+		if raw := os.Getenv("GRC_HELPER_DIAGNOSTIC_JSON"); raw != "" {
+			diagnostic = `,"diagnostic":` + raw
+		}
+		fields += fmt.Sprintf(`,"error":{"kind":%q,"retry_after_ms":%d,"no_side_effect":%t,"stage":%q%s}`, kind, retry, noSideEffect, stage, diagnostic)
 	}
 	if mode == "unknown-field" {
 		fields += `,"detail":"fixture-secret"`

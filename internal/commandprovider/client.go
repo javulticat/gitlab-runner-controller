@@ -245,6 +245,12 @@ func (c *Client) call(ctx context.Context, request provider.Request) (provider.R
 		if !validWireError(response) {
 			return provider.Response{}, transportError(request.Operation, "provider returned an invalid error response")
 		}
+		token := ""
+		if request.Runner != nil {
+			token = request.Runner.Token
+		}
+		// Suppress known secrets without changing the adapter's failure guarantees.
+		remote.Diagnostic = provider.SanitizeDiagnostic(remote.Diagnostic, c.env, token)
 		if remote.Stage == "preflight" {
 			return provider.Response{}, remoteError(request.Operation, *remote)
 		}
@@ -280,6 +286,9 @@ func validErrorKind(kind provider.ErrorKind) bool {
 
 func validWireError(response provider.Response) bool {
 	remote := response.Error
+	if remote.Diagnostic != nil && !remote.Diagnostic.Valid() {
+		return false
+	}
 	if !validErrorKind(remote.Kind) || remote.RetryAfterMS < 0 || remote.RetryAfterMS > (24*time.Hour).Milliseconds() || response.Resource != nil || response.Resources != nil || response.Complete != nil || response.OK != nil || response.Ready != nil {
 		return false
 	}
@@ -298,7 +307,7 @@ func remoteError(operation string, remote provider.WireError) *provider.Error {
 	if operation == "create" && !remote.NoSideEffect {
 		kind = provider.Uncertain
 	}
-	return &provider.Error{Operation: operation, Kind: kind, RetryAfter: time.Duration(remote.RetryAfterMS) * time.Millisecond, NoSideEffect: remote.NoSideEffect, Detail: "provider rejected the operation"}
+	return &provider.Error{Operation: operation, Kind: kind, RetryAfter: time.Duration(remote.RetryAfterMS) * time.Millisecond, NoSideEffect: remote.NoSideEffect, Detail: "provider rejected the operation", Diagnostic: remote.Diagnostic}
 }
 
 func localError(operation, detail string) *provider.Error {

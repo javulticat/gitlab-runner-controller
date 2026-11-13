@@ -30,6 +30,8 @@ type runnerPolicyAPI interface {
 	Policies(context.Context, []int64, []int64) (map[int64]gitlab.RunnerPolicy, error)
 }
 
+var errUnverifiedDispatch = &provider.Error{Operation: "dispatch", Kind: provider.Transient, Detail: "job observations await synchronization", NoSideEffect: true}
+
 type Controller struct {
 	cfg            config.Config
 	store          *state.Store
@@ -180,7 +182,12 @@ func (c *Controller) Step(ctx context.Context) (err error) {
 	c.stepMu.Lock()
 	defer c.stepMu.Unlock()
 	started := c.now()
+	deferred := false
 	defer func() {
+		if deferred {
+			c.metrics.state.observe(c.store.Snapshot(), c.now())
+			return
+		}
 		c.statusMu.Lock()
 		c.lastStep = c.now()
 		c.lastError = ""
@@ -196,11 +203,13 @@ func (c *Controller) Step(ctx context.Context) (err error) {
 	if c.admissionStopped(ctx) {
 		return ErrStopping
 	}
-	if err := c.refresh(ctx); err != nil {
+	proceed, err := c.refresh(ctx)
+	if err != nil {
 		return err
 	}
-	if !c.verified(c.store.Snapshot()) {
-		return errors.New("waiting for authoritative GitLab synchronization")
+	if !proceed || !c.verified(c.store.Snapshot()) {
+		deferred = true
+		return nil
 	}
 	inventory := map[string]map[string]provider.Resource{}
 	descriptions := map[string]provider.Description{}
@@ -289,7 +298,12 @@ func (c *Controller) Step(ctx context.Context) (err error) {
 	if err := c.observe(inventory); err != nil {
 		return err
 	}
-	return errors.Join(append(failures, c.schedule(ctx, inventory))...)
+	scheduleErr := c.schedule(ctx, inventory)
+	if scheduleErr == state.ErrStale {
+		deferred = len(failures) == 0
+		scheduleErr = nil
+	}
+	return errors.Join(append(failures, scheduleErr)...)
 }
 
 func (c *Controller) verified(saved state.State) bool {
@@ -304,7 +318,11 @@ func (c *Controller) mutate(ctx context.Context, name string, call func(context.
 	if c.admissionStopped(ctx) {
 		return errors.Join(ErrStopping, &provider.Error{Operation: "dispatch", Kind: provider.Transient, Detail: "controller is stopping", NoSideEffect: true})
 	}
-	if !c.providerVerified(c.store.Snapshot(), name) {
+	saved := c.store.Snapshot()
+	if !c.verified(saved) {
+		return errUnverifiedDispatch
+	}
+	if !c.providerVerified(saved, name) {
 		return &provider.Error{Operation: "dispatch", Kind: provider.Transient, Detail: "job or account observations are not verified", NoSideEffect: true}
 	}
 	if _, running := ctx.Value(admissionContextKey{}).(context.Context); running {
@@ -315,24 +333,24 @@ func (c *Controller) mutate(ctx context.Context, name string, call func(context.
 	return call(ctx)
 }
 
-func (c *Controller) refresh(ctx context.Context) error {
+func (c *Controller) refresh(ctx context.Context) (bool, error) {
 	snapshot := c.store.Snapshot()
 	now := c.now()
 	if now.Before(snapshot.BackoffUntil) {
-		return errors.New("GitLab synchronization is in backoff")
+		return false, errors.New("GitLab synchronization is in backoff")
 	}
 	dirty := snapshot.HintRevision != snapshot.VerifiedRevision
 	if !c.first && !dirty && now.Sub(snapshot.LastSync) < time.Duration(c.cfg.JobsPollInterval) {
-		return nil
+		return true, nil
 	}
 	if now.Before(snapshot.NextRefresh) {
-		return errors.New("GitLab refresh minimum interval has not elapsed")
+		return false, nil
 	}
 	if err := c.store.Update(func(saved *state.State) error {
 		saved.NextRefresh = now.Add(time.Duration(c.cfg.MinRefresh))
 		return nil
 	}); err != nil {
-		return err
+		return false, err
 	}
 	snapshot = c.store.Snapshot()
 	check := []state.Job{}
@@ -348,7 +366,7 @@ func (c *Controller) refresh(ctx context.Context) error {
 	var policies map[int64]gitlab.RunnerPolicy
 	if err == nil {
 		if c.admissionStopped(ctx) {
-			return ErrStopping
+			return false, ErrStopping
 		}
 		if reader, ok := c.jobs.(runnerPolicyAPI); ok {
 			ids := make([]int64, 0, len(c.cfg.Pools))
@@ -371,9 +389,9 @@ func (c *Controller) refresh(ctx context.Context) error {
 			saved.BackoffFailures = min(saved.BackoffFailures+1, 10)
 			return nil
 		}); saveErr != nil {
-			return errors.Join(err, saveErr)
+			return false, errors.Join(err, saveErr)
 		}
-		return err
+		return false, err
 	}
 	err = c.store.Update(func(saved *state.State) error {
 		if saved.HintRevision != snapshot.HintRevision {
@@ -424,7 +442,10 @@ func (c *Controller) refresh(ctx context.Context) error {
 		c.first = false
 		c.runnerPolicies = policies
 	}
-	return err
+	if err == state.ErrStale {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (c *Controller) observe(inventory map[string]map[string]provider.Resource) error {

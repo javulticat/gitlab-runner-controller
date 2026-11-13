@@ -5,7 +5,7 @@
 | Route | Access | Meaning |
 | --- | --- | --- |
 | `GET /healthz` | Public | HTTP process is alive; no state or credentials |
-| `GET /readyz` | Public | Fresh verified jobs, usable storage, successful recent reconciliation, verified runner metadata, no unknown/error or running-not-ready slots |
+| `GET /readyz` | Public | Fresh authoritative GitLab observation, usable storage, successful recent reconciliation, verified runner metadata, no unknown/error or running-not-ready slots |
 | `POST /webhook/gitlab` | `X-Gitlab-Token` | Persist Job Hook hints; return 202 only after storage succeeds |
 | `GET /status` | Bearer `ADMIN_TOKEN` | Pool/slot state, verified jobs, inbox revisions, operations, and backoff |
 | `GET /metrics` | Bearer `ADMIN_TOKEN` | Prometheus controller and Go/process metrics |
@@ -14,9 +14,12 @@ Admin routes return 404 when `ADMIN_TOKEN` is absent. Use an independent admin
 secret. Status excludes tokens but contains project, job, and resource IDs;
 treat it as private operational data.
 
-Logs are JSON on stderr. Adapter failures expose operation names and safe error
-categories. Raw child stdout, stderr, remote errors, and command arguments are
-not diagnostic output. Use the adapter's private diagnostic procedure and inspect
+Logs are JSON on stderr. Adapter failures expose operation names and error kinds,
+plus optional bounded call names, HTTP statuses, and public error codes from the
+[provider diagnostic contract](providers.md#failure-diagnostics). Account and slot
+errors in status include the same metadata. Raw child stdout, stderr, response
+bodies, remote error messages, and command arguments are not diagnostic output.
+Use the adapter's private diagnostic procedure and inspect
 the resource directly when investigating bootstrap or runtime failures. Do not
 paste credentials, runner configuration, or raw provider output into public issues.
 
@@ -34,6 +37,16 @@ Alert on stale synchronization, unresolved creations, unknown instances, and
 bootstrap errors. Queued demand at configured capacity is expected. Readiness
 is false during GitLab backoff; use liveness for restart policy because restarting
 cannot fix a rate limit.
+
+New hints and the minimum refresh interval defer lifecycle work without creating
+reconciliation failures, logs, or readiness changes while successful observations
+remain fresh. Deferred work preserves the last completed cycle's time and error;
+it does not increment reconciliation counters or duration observations. The
+controller retries at the next eligible refresh deadline without waiting for a
+poll tick. Initial startup still requires a successful live reconciliation, and
+real failures, stale observations, and active GitLab backoff degrade readiness.
+An undispatched activation does not start a bootstrap readiness deadline or slot
+retry backoff; deadlines and errors from earlier real attempts remain intact.
 
 Status includes `state.provider_errors`, each pool's `runner_error`, and slot
 `missing_since`, `bootstrap_started_at`, and `bootstrap_deadline` timestamps.
@@ -208,7 +221,7 @@ Never restore a backup into a second active deployment.
 A storage failure stops the service instead of advancing only in memory. Repair
 disk capacity or permissions and inspect the saved snapshot before restart.
 Corrupt, foreign, incomplete, and unknown-schema state is rejected without being
-overwritten. Controller v0.1.0 uses state schema version 1. No automatic conversion
+overwritten. The controller uses state schema version 1. No automatic conversion
 is provided for unsupported snapshots. Preserve rejected files and use the documented
 [resource adoption](migration.md) procedure for a controlled cutover. Snapshots
 are bounded to 32 MiB for loading and writing; an oversized update fails before

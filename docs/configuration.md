@@ -20,9 +20,9 @@ Adapter-specific JSON is validated by the adapter during normal operation.
 | `project_ids` | Required | Unique positive numeric IDs for every project these runners serve |
 | `listen_addr` | `:3000` | Bind address; `PORT` overrides the port and binds all interfaces |
 | `state_path` | `data/state.json` | Snapshot path; `STORAGE_DIR` overrides its directory |
-| `poll_interval` | `15s` | Reconciliation tick, also awakened by hooks |
+| `poll_interval` | `15s` | Reconciliation tick, supplemented by hooks and GitLab refresh deadlines |
 | `jobs_poll_interval` | `60s` | Normal complete GitLab synchronization interval |
-| `min_refresh_interval` | `5s` | Minimum interval for hook-triggered refresh attempts |
+| `min_refresh_interval` | `5s` | Minimum interval between GitLab refresh attempts; deferred hints retry at expiry |
 | `idle_grace` | `45s` | Entire-pool idle delay; at least one reconciliation tick |
 | `observation_grace` | `90s` | Delay before retrying an unconfirmed lifecycle request |
 | `request_timeout` | `50s` | Adapter operation timeout; maximum `5m` |

@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.1 — 2026-11-13
+
+- Treat refresh throttling and pending authoritative GitLab synchronization as
+  normal deferred work. Fresh observations keep readiness stable, while lifecycle
+  changes still wait for verified hints. Deferred work preserves existing errors
+  and does not count as a completed reconciliation.
+- Reconcile at the next eligible GitLab refresh deadline, including after racing
+  webhooks and across restarts, without waiting for the next poll tick.
+- Add optional bounded remote-call diagnostics to provider wire protocol 1 and
+  the Go SDK. Status and logs include vetted call names, HTTP statuses, and public
+  error codes alongside error kinds without forwarding raw provider output.
+  Existing adapters can continue omitting diagnostics. Upgrade the controller
+  before enabling diagnostics in adapters.
+- Keep release, deployment, SDK, and state documentation independent of patch
+  versions; update the Compose image to the release tag.
+
 ## v0.1.0 — 2026-11-13
 
 Initial release.

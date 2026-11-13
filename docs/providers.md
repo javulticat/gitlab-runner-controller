@@ -13,14 +13,17 @@ child-environment mappings and [deployment](deployment.md) for container packagi
 
 ## SDK compatibility
 
-Controller **v0.1.0** includes the Go SDK at
+The controller includes the Go SDK at
 `github.com/javulticat/gitlab-runner-controller/pkg/provider`. Add it to a Go
 adapter with:
 
 ```sh
-go get github.com/javulticat/gitlab-runner-controller@v0.1.0
+go get github.com/javulticat/gitlab-runner-controller@latest
 ```
 
+To select a release, replace `@latest` with a tag from the
+[release tags](https://github.com/javulticat/gitlab-runner-controller/tags).
+The resolved version is pinned in the adapter's `go.mod` and `go.sum`.
 The SDK follows the controller's module version. While the major version is
 `v0`, minor releases may change Go APIs incompatibly; patch releases preserve
 the public Go API. Pin an exact SDK release, review the changelog before
@@ -28,12 +31,14 @@ upgrading, and run the adapter's checks and installation with `GOWORK=off` to
 verify its standalone dependencies.
 
 The SDK version, JSON wire protocol version, and state schema version are
-separate contracts. Release `v0.1.0` uses wire protocol **1**. Adapters in any
-language can interoperate through that protocol regardless of their SDK version.
+separate contracts. The controller uses wire protocol **1**. Adapters in any
+language can implement that protocol independently of the Go SDK.
 Existing protocol-1 operations and safety guarantees remain compatible within
 protocol 1; incompatible wire changes require a new protocol version. The strict
 decoder rejects unknown fields, so adapters must emit only fields supported by
-the controller's protocol version.
+the target controller. Controllers supporting optional diagnostics accept older
+adapters that omit them. Older controllers reject the additional field, so upgrade
+the controller before enabling diagnostics in adapters.
 
 ## Execution and framing
 
@@ -180,11 +185,72 @@ and retry delay. Operation errors and all successful responses require the
 verified account/scope description. A preflight claim with success payload fields
 is invalid.
 `retry_after_ms` is an optional account backoff duration, capped at one day.
+An optional `diagnostic` carries bounded public metadata as described below.
 No raw remote message or child output is part of the wire error. A create that
 may have taken effect must be `uncertain`. Only an adapter that can prove the
 request was rejected before any side effect may set `no_side_effect: true` on its
 create error. A generic failure, timeout, process exit, or lost response cannot
 prove absence and must retain the creation reservation.
+
+### Failure diagnostics
+
+An error can include the failing remote call and its HTTP status or public code:
+
+```json
+{
+  "kind": "invalid",
+  "stage": "operation",
+  "no_side_effect": true,
+  "diagnostic": {
+    "operation": "hosts.create",
+    "http_status": 403,
+    "code": "AccessDenied"
+  }
+}
+```
+
+`diagnostic.operation` is required. It and optional `code` are each 1–64 ASCII
+bytes matching `[A-Za-z0-9][A-Za-z0-9._-]*`. The optional `http_status` is an
+integer from 100 through 599; zero means omitted. The object has no free-text
+message, URL, headers, or response-body field. Unknown fields remain invalid.
+
+Use fixed call names and vetted public error codes. Never copy `err.Error()`,
+remote messages, response bodies, headers, URLs, command output, configuration,
+credentials, or user-controlled values into diagnostics. Syntax bounds do not
+prove that a value is public. The SDK and command driver also suppress diagnostics
+containing the request's runner token at any length, or environment values longer
+than eight bytes other than `PATH` and `LANG`. Short environment values are skipped
+so modes such as `retained` and flags such as `1` do not hide public metadata.
+Adapters remain responsible for short environment secrets and unknown or
+transformed secrets.
+
+Go adapters set the explicit `Diagnostic` field on `provider.Error`:
+
+```go
+return &provider.Error{
+    Operation: "create",
+    Kind: provider.Invalid,
+    NoSideEffect: true,
+    Diagnostic: &provider.Diagnostic{
+        Operation: "hosts.create",
+        HTTPStatus: 403,
+        Code: "AccessDenied",
+    },
+}
+```
+
+The SDK does not serialize `Error.Detail` or wrapped error text. Invalid or
+known-secret diagnostics are deliberately omitted without changing the error
+kind, retry delay, stage, or side-effect guarantee. Independently implemented
+adapters must obey the same syntax: a malformed diagnostic makes the response
+invalid, and a malformed create response remains uncertain.
+
+Status and logs display accepted diagnostics alongside the error kind. Diagnostics
+are informational: they never authorize retries, release resources, or change
+ownership, and they do not appear in metric labels. Omitting `diagnostic` preserves
+the existing protocol-1 error behavior.
+
+### Repeatability
 
 Repeatability means safe repetition after a lost reply. Repeating `drain` must
 not start a new manager or force-stop assigned work. Return `ready: true` only

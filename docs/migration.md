@@ -1,6 +1,6 @@
 # State compatibility and resource adoption
 
-Controller v0.1.0 uses state schema version 1. The controller accepts only
+The controller uses state schema version 1. It accepts only
 complete snapshots in that format, including provider account/scope bindings,
 pinned placement options, and numeric runner IDs. Unsupported versions,
 unversioned files, unknown fields, and incomplete snapshots are rejected without

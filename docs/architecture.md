@@ -97,6 +97,15 @@ call holds the state mutex. New hints invalidate further decisions until verifie
 Adapter-side drain closes the race where a manager accepts a job after the last
 GitLab observation.
 
+The minimum refresh interval defers work without recording a reconciliation
+failure. A pending hint does not degrade service readiness while the last
+successful synchronization and reconciliation remain fresh; it still blocks
+lifecycle changes. Deferred cycles preserve the previous reconciliation result
+and completion time. A one-shot timer reconciles at the next eligible refresh
+deadline alongside poll ticks and webhook wakes, honoring durable minimum
+refresh and backoff timestamps. Racing hints retain their inbox entries and
+retry at that deadline. Real failures and stale observations degrade readiness.
+
 Pending demand determines scale-out:
 `min(max_instances, ceil((pending + busy) / jobs_per_instance))`. Existing busy
 instances count toward the target. Running jobs alone do not wake stopped hosts.
@@ -146,7 +155,7 @@ State is a versioned complete JSON snapshot. Transactions clone and validate it,
 write a private temporary file, synchronize it, atomically rename it, and
 synchronize the parent directory before publishing it in memory. Persistence
 failure poisons the store and stops the service. Restore usable storage before
-restarting. Controller v0.1.0 uses state schema version 1. Startup rejects
+restarting. The controller uses state schema version 1. Startup rejects
 unsupported, unversioned, and incomplete snapshots without overwriting them.
 Existing resources require [explicit adoption](migration.md)
 when taking over from another controller.

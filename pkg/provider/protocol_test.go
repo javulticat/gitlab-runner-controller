@@ -155,7 +155,8 @@ func TestServePreflightErrorsCertifyNoDispatch(t *testing.T) {
 	for _, phase := range []string{"factory", "describe", "options"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture, request := newProtocolFixture(), protocolRequest()
-			preflightErr := &provider.Error{Kind: provider.Transient, RetryAfter: 1250 * time.Millisecond, Detail: "fixture-secret"}
+			diagnostic := &provider.Diagnostic{Operation: "account.describe", HTTPStatus: 503, Code: "Unavailable"}
+			preflightErr := &provider.Error{Kind: provider.Transient, RetryAfter: 1250 * time.Millisecond, Detail: "fixture-secret", Diagnostic: diagnostic}
 			if phase == "describe" {
 				fixture.describeError = preflightErr
 			}
@@ -184,7 +185,7 @@ func TestServePreflightErrorsCertifyNoDispatch(t *testing.T) {
 			if err := json.Unmarshal(output.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if fixture.createCalls != 0 || response.Error == nil || response.Error.Stage != "preflight" || !response.Error.NoSideEffect || response.Error.Kind != provider.Transient || response.Error.RetryAfterMS != 1250 {
+			if fixture.createCalls != 0 || response.Error == nil || response.Error.Diagnostic == nil || *response.Error.Diagnostic != *diagnostic || response.Error.Stage != "preflight" || !response.Error.NoSideEffect || response.Error.Kind != provider.Transient || response.Error.RetryAfterMS != 1250 {
 				t.Fatalf("preflight error lost retry metadata or dispatched a mutation: calls=%d response=%+v", fixture.createCalls, response)
 			}
 			if phase != "options" && response.Description != (provider.Description{}) {

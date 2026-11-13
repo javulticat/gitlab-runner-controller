@@ -36,6 +36,9 @@ func (c *Controller) ShutdownGrace() time.Duration {
 func (c *Controller) Run(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(c.cfg.PollInterval))
 	defer ticker.Stop()
+	refresh := time.NewTimer(0)
+	refresh.Stop()
+	defer refresh.Stop()
 	defer c.stopping.Store(true)
 	for {
 		if ctx.Err() != nil {
@@ -67,16 +70,34 @@ func (c *Controller) Run(ctx context.Context) error {
 		if !c.store.Healthy() {
 			return c.shutdownResult(err)
 		}
-		if err != nil && !errors.Is(err, state.ErrStale) && !errors.Is(err, ErrStopping) && ctx.Err() == nil {
+		if err != nil && !errors.Is(err, ErrStopping) && ctx.Err() == nil {
 			c.log.Error("reconciliation failed", "error", err)
 		}
+		refresh.Reset(max(0, c.nextRefreshAt().Sub(c.now())))
 		select {
 		case <-ctx.Done():
 			return c.shutdownResult(nil)
 		case <-ticker.C:
 		case <-c.wake:
+		case <-refresh.C:
 		}
 	}
+}
+
+func (c *Controller) nextRefreshAt() time.Time {
+	c.stepMu.Lock()
+	defer c.stepMu.Unlock()
+	saved := c.store.Snapshot()
+	due := saved.LastSync.Add(time.Duration(c.cfg.JobsPollInterval))
+	if c.first || saved.HintRevision != saved.VerifiedRevision {
+		due = time.Time{}
+	}
+	for _, deadline := range []time.Time{saved.NextRefresh, saved.BackoffUntil} {
+		if deadline.After(due) {
+			due = deadline
+		}
+	}
+	return due
 }
 
 func (c *Controller) shutdownResult(err error) error {

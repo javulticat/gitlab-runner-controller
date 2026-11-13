@@ -1,6 +1,6 @@
 # Design decisions and implementation boundaries
 
-This record describes the controller v0.1.0 contract and the reasons for its
+This record describes the controller contract and the reasons for its
 boundaries. Build and test output establish verification status; the architecture
 and operational documents describe supported behavior.
 
@@ -13,7 +13,8 @@ out of the public controller. Adapters can use any language; Go has a small serv
 SDK in `pkg/provider`.
 
 The process boundary uses direct argv, explicitly mapped environment variables,
-bounded messages, safe error categories, cancellation deadlines, and process-group
+bounded messages, safe error kinds and optional public call diagnostics,
+cancellation deadlines, and process-group
 termination. The stock image remains minimal; adapter runtime dependencies are an
 operator packaging responsibility.
 
@@ -43,7 +44,7 @@ placement options and numeric GitLab runner IDs cannot silently change while
 handles exist. A provider failure or backoff blocks that account's work;
 independent accounts continue and overall readiness reports the failure.
 
-Controller v0.1.0 uses state schema version 1. Startup rejects unsupported,
+The controller uses state schema version 1. Startup rejects unsupported,
 unversioned, and incomplete snapshots without rewriting them. Taking over existing
 resources requires a controlled cutover with explicit ordered adoption IDs;
 the previous owner's snapshot remains separate and private.
@@ -70,6 +71,13 @@ project runner availability checks precede pending scale-out. Full tag
 compatibility selects a unique pool. Actual runner assignment protects busy
 work even if tags change; unrelated runner jobs do not count. Unknown assignment
 and ambiguous matches protect existing capacity without allocating hosts.
+
+Refresh throttling and racing hints are normal deferrals. They preserve completed
+reconciliation status and service readiness while observations remain fresh,
+without weakening verified-demand checks for lifecycle changes. A dedicated
+refresh timer honors the persisted minimum interval and GitLab backoff, so a
+deferred hint does not have to wait for a poll tick. Startup still requires a
+successful live reconciliation; real failures remain visible.
 
 Protected pending eligibility remains unknown because current ref policy cannot
 prove the job's persisted eligibility. The default policy saves one bounded

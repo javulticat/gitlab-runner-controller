@@ -90,9 +90,20 @@ type Error struct {
 	Kind         ErrorKind
 	RetryAfter   time.Duration
 	Detail       string
+	Diagnostic   *Diagnostic
 	NoSideEffect bool
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("provider %s: %s (%s)", e.Operation, e.Detail, e.Kind)
+	message := fmt.Sprintf("provider %s: %s (%s)", e.Operation, e.Detail, e.Kind)
+	if d := SanitizeDiagnostic(e.Diagnostic, nil, ""); d != nil {
+		message += "; call=" + d.Operation
+		if d.HTTPStatus != 0 {
+			message += fmt.Sprintf(" http_status=%d", d.HTTPStatus)
+		}
+		if d.Code != "" {
+			message += " code=" + d.Code
+		}
+	}
+	return message
 }

@@ -1,7 +1,7 @@
 # GitLab Runner Controller
 
 Project mode: **Production**. This Go service has one active owner of a durable
-local state file. The released version is **v0.1.0**.
+local state file. Release history is recorded in `CHANGELOG.md`.
 
 Read these documents before changing behavior:
 

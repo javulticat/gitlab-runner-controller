@@ -1,9 +1,9 @@
 # Release source and dependency provenance
 
-The source for controller v0.1.0 is the
-[`v0.1.0` Git tag](https://github.com/javulticat/gitlab-runner-controller/tree/v0.1.0).
-The Go module and provider SDK share this version. The published image is
-`ghcr.io/javulticat/gitlab-runner-controller:v0.1.0` for `linux/amd64` and
+Each controller release corresponds to its matching
+[Git tag](https://github.com/javulticat/gitlab-runner-controller/tags).
+The Go module and provider SDK share that version. Published images use
+`ghcr.io/javulticat/gitlab-runner-controller:<version>` for `linux/amd64` and
 `linux/arm64`. Its OCI labels record source, revision, version, creation time,
 and license. Use an image digest to identify an exact published artifact.
 

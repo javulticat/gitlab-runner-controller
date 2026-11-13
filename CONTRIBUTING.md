@@ -30,9 +30,10 @@ reports, follow `SECURITY.md`.
 
 ## Releases
 
-Release v0.1.0 is a Git tag and Go module version, with an image at
-`ghcr.io/javulticat/gitlab-runner-controller:v0.1.0`. For each release, update the
-changelog, supported versions in `SECURITY.md`, and version-pinned documentation.
+Each release is a Git tag and Go module version, with a matching image tag at
+`ghcr.io/javulticat/gitlab-runner-controller`. For each release, update the
+changelog and release-pinned deployment manifests. Keep guides independent of
+patch versions and update supported release lines in `SECURITY.md` when needed.
 Run `make check`, `make vuln`, `make container`, and `make smoke` before tagging
 the reviewed commit as `vMAJOR.MINOR.PATCH`.
 

@@ -200,8 +200,7 @@ func (c *Controller) updateIdle(demands map[string]demand) error {
 func (c *Controller) ensureBootstrap(pool string, index int) error {
 	return c.slotUpdate(pool, index, func(slot *state.Slot) {
 		if !slot.Ready && slot.BootstrapDeadline.IsZero() {
-			slot.BootstrapStartedAt = c.now()
-			slot.BootstrapDeadline = c.now().Add(time.Duration(c.cfg.ReadinessTimeout))
+			c.startBootstrap(slot, c.now())
 		}
 	})
 }

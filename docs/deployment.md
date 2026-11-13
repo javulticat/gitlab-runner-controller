@@ -12,24 +12,27 @@ credentials and settings it requires. No adapter is bundled with the stock image
 
 ## Release image and source builds
 
-Use `ghcr.io/javulticat/gitlab-runner-controller:v0.1.0` for `linux/amd64` or
-`linux/arm64`. Docker selects the host architecture automatically:
+Set `CONTROLLER_VERSION` to the desired tag from the
+[release tags](https://github.com/javulticat/gitlab-runner-controller/tags).
+Images support `linux/amd64` and `linux/arm64`; Docker selects the host
+architecture automatically:
 
 ```sh
-docker pull ghcr.io/javulticat/gitlab-runner-controller:v0.1.0
-docker run --rm --network none ghcr.io/javulticat/gitlab-runner-controller:v0.1.0 version
+docker pull "ghcr.io/javulticat/gitlab-runner-controller:${CONTROLLER_VERSION:?set CONTROLLER_VERSION to a release tag}"
+docker run --rm --network none "ghcr.io/javulticat/gitlab-runner-controller:$CONTROLLER_VERSION" version
 ```
 
-The command prints `v0.1.0`. Pin the image by digest when deployments require an
-exact artifact. Install or mount a compatible adapter before running the service.
+The command prints the selected tag. Pin the image by digest when deployments
+require an exact artifact. Install or mount a compatible adapter before running
+the service.
 
-From a clean `v0.1.0` source checkout, `make build` and `make container` produce
-binaries that report `v0.1.0`. Untagged or modified checkouts report `dev`.
+From a clean release-tagged source checkout, `make build` and `make container`
+produce binaries that report that tag. Untagged or modified checkouts report `dev`.
 `make container` supplies the native binary's version as a Docker build argument.
 For a direct release build from the same checkout, pass it explicitly:
 
 ```sh
-docker build --build-arg VERSION=v0.1.0 -t gitlab-runner-controller:v0.1.0 .
+docker build --build-arg VERSION="$CONTROLLER_VERSION" -t "gitlab-runner-controller:$CONTROLLER_VERSION" .
 ```
 
 Direct Docker builds default to `dev` because Git metadata is excluded from the
@@ -50,7 +53,7 @@ docker compose --env-file .env -f deploy/compose/compose.yaml up -d
 docker compose --env-file .env -f deploy/compose/compose.yaml logs -f
 ```
 
-The recipe uses the v0.1.0 release image, mounts that executable read-only at
+The recipe pins a release image, mounts that executable read-only at
 `/opt/runner-host-adapter`, and
 overrides `HOST_A_COMMAND_JSON` to `["/opt/runner-host-adapter"]`. The binary must
 be executable by UID/GID `65532` and compatible with the stock scratch image.
